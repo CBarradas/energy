@@ -1,0 +1,470 @@
+---
+title: "What drives Renewable Energy Generation?"
+author: "Cecilia Barradas"
+date: "March 3rd, 2022"
+output:
+  pdf_document: default
+  R, Rmd, PDF: default
+    fontsize:11pt
+    
+---
+
+# Introduction
+
+## Overview: 
+This project is the capstone for the course PH125.9x of Harvard X in order to earn the Data Science Certificate.
+
+## Goal: 
+This second part of the capstone consists in choosing a project of our own, finding a data set from the Kaggle or the UCI Machine Learning Repository, explore the data and apply machine learning techniques.
+
+## Data set: 
+Following the instructions, I browsed the publicly available data sets and chose a data set on crime in Vancouver. After exploring the data and creating data visualizations regarding crime types, times and places, I found that it had no machine learning modelling potential. I went back to choose another data set and started working with information on real estate sales in New York, but after a few explorations, I found it was terribly boring. After much browsing, I finally settled for a topic that I am deeply engaged with: Sustainable Energy. I had a data set obtained in another online course with data on energy generation, price, sales, pollution, and other demographic and political variables. After opening this data set, so many questions came to mind, which is a good indication of future work. I make the data set available in the Github website.
+It is important to notice that this data set does not provide technical documentation on the variables, therefore, we do not know if energy generation is measured in megawatts, gigawatts, or watt hours; if sales refer to electricity or  monetary quantities, or if prices are in dollars or dollars per hour. The only certainties are that total salary in measured in  US Dollars and government incentives in number. As a result, this data set is good to train machine learning models and see the importance of the predictors on the dependent variable, but it has very low real life interpretability.
+
+## Key Steps:
+1. Loaded the data set
+2. Explore the data for relationships between the variables to choose the best ones for machine learning modelling.
+3. Divided the data into training and testing sets, 80% of the data went into the train set and 20% to the test set. 
+4. As the dependent variable was continuous, 3 machine learning techniques were chosen to train the data: Linear Regression, Decision Trees and Random Forest. Each was trained with 3 models containing: all variables, 9 variables (a combination of significant variables and theoretically important variables), and the 6 most significant variables.
+5. A table comparing the RMSE of all the models and techniques is shown in the results to show the best method, along with an explanation on the most important variables in each model.
+
+# Method
+The following libraries were used:tidyverse, caret, data.table, ggplot2, dplyr, knitr, RColorBrewer, rmarkdown, pdftools, kableExtra, rpart, rpart.plot, randomForest, lubridate, purrr, e1071, scales, ggpubr, ggrepel, parameters and insight.
+
+```{r loading libraries, include=FALSE, warning=FALSE}
+library(tidyverse)
+library(caret)
+library(data.table)
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+library(knitr)
+library(RColorBrewer)
+library(rmarkdown)
+library(pdftools)
+library(kableExtra)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(purrr)
+library(e1071)
+library(scales)
+library(ggpubr)
+library(ggrepel)
+library(parameters)
+library(insight)
+```
+
+## 1.Data Preparation
+```{r opening the data, include=FALSE, warning=FALSE}
+energy<-read.csv("energy.csv")
+```
+
+```{r, echo= FALSE}
+df1<-data.frame(variable = names(energy), class = sapply(energy, class), first_values = sapply(energy, function(x) paste0(head(x),  collapse = ", ")), row.names = NULL) 
+kable(df1) %>% kable_styling(bootstrap_options= c("hover", "condensed"), font_size= 9, full_width=F, position= "center", latex_options = "HOLD_position")
+```
+The data set has 699 observations and 27 variables. At first glance, removing NA's seemed adequate, yet removing all NAs leaves a data set with only 249 observations.
+
+Therefore, removing variables with many NAs like GenSolarBinary and GenTotalRenewableBinary that will not be useful for this exercise, seemed more appropriate. Also, we will remove AllSourcesCO2, AllSourcesSO2 and AllSourcesNOx because they contain 50 NA's each, and even though very interesting questions can be answered with them, they will be matter of a later exercise. Finally, we will remove, ESalesOther, as it has 449 NA's and it wont bring any insight; and Import, which leaves a final data set of 699 observations and 20 variables. 
+
+```{r removing unwanted variables, include=FALSE, warning=FALSE}
+energy = subset(energy, select = -c(GenSolarBinary, GenTotalRenewableBinary, AllSourcesCO2, AllSourcesSO2, AllSourcesNOx, EsalesOther, Import))
+```        
+
+```{r, echo= FALSE, warning=FALSE}
+df2<-data.frame(variable = names(energy), class = sapply(energy, class), first_values = sapply(energy, function(x) paste0(head(x),  collapse = ", ")), row.names = NULL) 
+kable(df2) %>% kable_styling(bootstrap_options= c("hover", "condensed"), font_size= 9, full_width=F, position= "center", latex_options = "HOLD_position")
+```
+
+Energy is such a vital sector of our lives. We can not live without energy. This data set talks about energy generation, price, sales and the variables that have inference in them, like governmental incentives, salary level in the population and politics.
+At a first glance many questions arise: What is the relationship between government incentives and renewable energy generation?, between generation and price?, between price and sales?, between salary and sales and production? Have energy prices risen or decreased with time, with renewable energy production? Will they rise or decrease in the future?
+
+In order to answer some of these questions, this data set needs to be averaged in order to have one averaged point per year and make clean visualizations, if not we will have 50 observations per year(one per State) clouding clear results. We create a data frame with this new averaged variables, removing the YEAR repetition.
+
+```{r averaging variables, include=FALSE, warning=FALSE}
+avgEPR<- energy%>% group_by(YEAR) %>% summarise(mean(EPriceResidential))
+avgEPC<- energy%>% group_by(YEAR) %>% summarise(mean(EPriceCommercial))
+avgEPI<- energy%>% group_by(YEAR) %>% summarise(mean(EPriceIndustrial))
+avgEPT<- energy%>% group_by(YEAR) %>% summarise(mean(EPriceTotal))
+avgGenTotal<- energy%>% group_by(YEAR) %>% summarise(mean(GenTotal))
+avgGenHydro<- energy%>% group_by(YEAR) %>% summarise(mean(GenHydro))
+avgGenSolar<- energy%>% group_by(YEAR) %>% summarise(mean(GenSolar))
+avgGenTotalRenewable<- energy%>% group_by(YEAR) %>% summarise(mean(GenTotalRenewable))
+avgCumlFinancial<- energy%>% group_by(YEAR) %>% summarise(mean(CumlFinancial))
+avgCumlRegulatory<- energy%>% group_by(YEAR) %>% summarise(mean(CumlRegulatory))
+avgESR<- energy%>% group_by(YEAR) %>% summarise(mean(EsalesResidential))
+avgESC<- energy%>% group_by(YEAR) %>% summarise(mean(EsalesCommercial))
+avgESI<- energy%>% group_by(YEAR) %>% summarise(mean(EsalesIndustrial))
+avgEST<- energy%>% group_by(YEAR) %>% summarise(mean(EsalesTotal))
+avgTotalSalary<- energy%>% group_by(YEAR) %>% summarise(mean(Total.salary))
+year<- energy%>% group_by(YEAR) %>% summarise(mean(YEAR))
+avgenergy <- data.frame(avgCumlFinancial, avgCumlRegulatory, avgEPC, avgEPI, avgEPR, avgEPT, avgESC, avgESI, avgESR, avgEST, avgGenHydro, avgGenSolar, avgGenTotal, avgGenTotalRenewable, avgTotalSalary, year)
+avgenergy = subset(avgenergy, select = -c(YEAR, YEAR.1, YEAR.2,YEAR.3, YEAR.4, YEAR.5, YEAR.6,YEAR.7, YEAR.8, YEAR.9, YEAR.10, YEAR.11, YEAR.12, YEAR.13, YEAR.14, YEAR.15))
+```
+
+```{r, echo= FALSE, warning=FALSE}
+ df3<-data.frame(variable = names(energy), class = sapply(energy, class), first_values = sapply(energy, function(x) paste0(head(x),  collapse = ", ")), row.names = NULL) 
+kable(df3) %>% kable_styling(bootstrap_options= c("hover", "condensed"), font_size= 9, full_width=F, position= "center", latex_options = "HOLD_position") 
+```
+This leaves a data set of 16 variables with 14 observations, one per year from 2000 to 2013.
+
+## 2. Data Exploration, Visualization and Insights
+
+Theory would follow that an increase in government incentives would provoke a surge in energy generation that would be accompanied by a decrease in prices due to increased demand. This in turn will increase consumption due to more affordable energy prices. Another path is that increase in income causes increase in consumption. We will try to see with this data set if the theory can be proven or debunked.
+
+An Increase in Government Incentives -> Increase in Energy Generation-> Decrease in Prices( more offer)-> Increase in Consumption
+
+Increase in income -> Increase in Energy Consumption
+
+## 2.1. Price
+With this averaged data set, we can start making exploratory visualizations. First quick question is: Has the price of energy increased or decreased over the years. Plotting the average price per year quickly shows that energy prices have increased from 2000 to 2013. 
+
+```{r plotting prices overtime, echo= FALSE, warning=FALSE}
+plot(avgEPT)
+```
+To check that this trend is followed by all human activities, we plot energy prices in  residential, commercial and industrial zones.
+
+```{r plotting prices in residential, commercial and industrial zones, echo= FALSE, warning=FALSE}
+ggplot(avgenergy, aes(x=mean.YEAR.)) + 
+  geom_line(aes(y=mean.EPriceResidential., color="Residential"), size=2) + 
+  geom_line(aes(y=mean.EPriceCommercial., color="Commercial"), size=2) + 
+  geom_line(aes(y=mean.EPriceIndustrial., color="Industrial"), size=2) + 
+  geom_line(aes(y=mean.EPriceTotal., color="Total"), linetype="twodash", size=2) + 
+  scale_color_manual(values = c("darkred", "steelblue", "darkolivegreen4", "black")) + 
+  scale_y_continuous(name= "Energy Prices", limits=c(5,13), breaks= c(5,7,9,11,13)) + 
+  scale_x_continuous(name= "Year", limits=c(2000,2013), breaks= c(2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013)) +
+  ggtitle("Energy Prices 2000-2013") + 
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5))+ 
+  theme(axis.text.x=element_text(angle = -270, hjust = 1)) + 
+  labs(color="Zone")
+```
+
+We can clearly see that there has been a price upward trend in the time studied. 
+
+## 2.2 Government Incentives
+Another upward trend, specially after 2005 was the implementation of government incentives for energy generation. 
+
+```{r plotting government incentives, echo= FALSE, warning=FALSE} 
+ggplot(avgenergy, aes(x=mean.YEAR.)) + 
+  geom_line(aes(y=mean.CumlRegulatory., color="Regulatory"), size=2) + 
+  geom_line(aes(y=mean.CumlFinancial., color="Financial"), size=2)  + 
+  scale_color_manual(values = c("darkorange", "cyan3")) + 
+  scale_y_continuous(name= "Government Incentives", limits=c(0,40), breaks= c(0,10,20,30,40)) + 
+  scale_x_continuous(name= "Year", limits=c(2000,2013), breaks= c(2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013)) + 
+  ggtitle("Government Incentives 2000-2013") +  
+  theme_classic() + theme(plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x=element_text(angle = -270, hjust = 1)) + 
+  labs(color="Type of Incentive")
+```
+
+This is consistent historically with the policies implemented in 2009, when President Obama and Congress worked together to combat a severe economic recession by passing a massive economic stimulus plan. Among its many provisions, the American Recovery and Reinvestment Act of 2009 provided US$90 billion to promote clean energy. The bill’s clean energy package was dubbed the “biggest energy bill in history". 
+
+## 2.3 Energy Generation
+Was this followed by higher Energy generation? In terms of total energy, we do not see an increase in generation that would follow the increase in government incentives. On the contrary, from 2010, there seems to be a downward trend. 
+To dig deeper, we will see the subsections of energy generation: Solar, Hydro and Renewable (taking into account that both hydro and solar are renewable energy generation sources).
+
+```{r plotting hydro, solar and renewable energy generation, echo= FALSE, warning=FALSE}
+ggplot(avgenergy, aes(x=mean.YEAR.)) +
+  geom_line(aes(y=mean.GenHydro., color="Hydro"), size=2) + 
+  geom_line(aes(y=mean.GenSolar., color="Solar"), size=2)  + 
+  geom_line(aes(y=mean.GenTotalRenewable., color="Renewable"), size=2)  + scale_color_manual(values = c("darkslategrey", "sienna4", "coral1")) + 
+  scale_y_continuous(name= "Energy Generation", limits=c(0,.16), breaks= c(0.04,0.08,0.12,0.16)) + 
+  scale_x_continuous(name= "Year", limits=c(2000,2013), breaks= c(2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013)) + 
+  ggtitle("Energy Generation 2000-2013") +  
+  theme_classic() + theme(plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x=element_text(angle = -270, hjust = 1)) + 
+  labs(color="Type of Energy Generation")
+```
+
+The relationship is not as straightforward, we can see that there is an upward trend in total renewable Energy generation, which must be caused by an external factor such as wind power, which is not included in this data set, because Hydroelectric power and solar do not seem to follow the upward trend. 
+
+## 2.4 Energy Consumption
+Since there was not more energy generated, was there more being consumed? In this case we will use energy sales as a proxy for energy consumption. 
+
+```{r plotting energy sales, echo= FALSE, warning=FALSE}
+ggplot(avgenergy, aes(x=mean.YEAR.)) + 
+  geom_line(aes(y=mean.EsalesResidential., color="Residential"), size=2) + 
+  geom_line(aes(y=mean.EsalesCommercial., color="Commercial"), size=2)  + 
+  geom_line(aes(y=mean.EsalesIndustrial., color="Industrial"), size=2)  + 
+  scale_color_manual(values = c("darkred", "steelblue", "darkolivegreen4")) + 
+  scale_y_continuous(name= "Energy Consumption", limits=c(0.25,0.4), breaks= c(0.25,0.30,0.35,0.40)) +
+  scale_x_continuous(name= "Year", limits=c(2000,2013), breaks= c(2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013)) + 
+  ggtitle("Energy Consumption 2000-2013") + theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x=element_text(angle = -270, hjust = 1)) + 
+  labs(color="Zone")
+```
+
+We can see a slight increase in the consumption of energy for the residential and commercial areas and a decrease in the industrial zones. This can be explained as the initial steps of the industry to be energy independent and generate its own power.
+
+## 2.5 Salary
+Finally, we will investigate if population income has an impact in energy prices.
+
+```{r plotting total salary, echo= FALSE, warning=FALSE}
+ggplot(avgenergy, aes(x=mean.YEAR.)) + 
+  geom_line(aes(y=mean.Total.salary., color="Income"), size=2) + 
+  geom_line(aes(y=mean.EPriceTotal., color="Energy Prices"), size=2)  + 
+  geom_line(aes(y=mean.EsalesTotal., color="Energy Consumption"), size=2) + 
+  scale_color_manual(values = c("darkmagenta", "brown2", "aquamarine2")) + 
+  scale_y_continuous(name= "Currency", limits=c(5,30), breaks= c(5,10,15,20,30,25,30)) + 
+  scale_x_continuous(name= "Year", limits=c(2000,2013), breaks= c(2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013)) + 
+  ggtitle("Energy Trends 2000-2013") + theme_classic() + theme(plot.title = element_text(hjust = 0.5)) + 
+  theme(axis.text.x=element_text(angle = -270, hjust = 1)) + 
+  labs(color="Trend")
+```
+
+This last graph shows that Energy Consumption did not variate much in the 13 years of the study, it was pulled up by income but pulled down by rising energy prices.
+
+
+## 3. Data Modeling 
+
+For the machine learning models, we will use the original data set with the 699 observations. First we will divide the data in train and test set. After many errors, I realized there was one NA in Epricetransportation that kept interfering, therefore I dropped the NA's, leaving a data set of 698 observations, 558 in the training set and 140 in the test set.
+
+```{r dropping NAs and data partition, include=FALSE, warning=FALSE}
+energy<- drop_na(energy)
+sum(is.na(energy)) 
+
+set.seed(1, sample.kind="Rounding")
+test_index<-createDataPartition(y=energy$GenTotalRenewable, times=1, p=0.2, list=FALSE)
+train_set<-energy %>% slice(-test_index)
+test_set<-energy %>% slice (test_index)
+
+dim(train_set) 
+dim(test_set)
+```
+
+
+## 3.1 Linear Regression
+To know which variables to include in the model, we measure their importance with a simple linear regression + elimination. A first model includes all variables except State and YEAR
+
+```{r setting seed, include=FALSE, warning=FALSE}
+set.seed(1, sample.kind="Rounding")
+```
+
+```{r table of significant variables1, echo= FALSE, warning=FALSE}
+lm1<-lm(GenTotalRenewable~GenTotal + GenHydro + GenSolar + EPriceResidential +EPriceCommercial + EPriceIndustrial + EPriceTransportation + EPriceTotal + EsalesResidential + EsalesCommercial + EsalesIndustrial +EsalesTransportation + EsalesTotal + CumlFinancial + CumlRegulatory + Total.salary + presidential.results, data=energy)
+model_parameters(lm1) %>% print_md()
+```
+
+This first model has a very high adjusted R2 of .9741 and shows that the most significant variables are GenHydro, EPriceTransportation, CumlFinancial and Total.Salary; and to a lesser extent GenSolar and EsalesTransportation. These outcome does not fully match conventional theory or the information observed in the data exploration, but allows for the creation of a model with the significant variables. 
+Reducing the model to include less variables without losing significance in the adjusted r-squared, gives a model with 9 variables (the most significant according to the linear regression and theoretical hypothesis.)
+
+
+```{r table of significant variables2, echo= FALSE, warning=FALSE}
+lm2<-lm(GenTotalRenewable~GenTotal + GenHydro + GenSolar + EPriceTransportation + EPriceTotal + EsalesTransportation + EsalesTotal + CumlFinancial + Total.salary, data=energy)
+model_parameters(lm2) %>% print_md()
+```
+Interestingly the importance of transportation continues to be significant, while the totals are not, therefore, we run a third model, with only the 6 significant variables without losing value in the adjusted r-squared.
+
+```{r table of significant variables3, echo= FALSE, warning=FALSE}
+lm3<-lm(GenTotalRenewable~ GenHydro + GenSolar + EPriceTransportation + EsalesTransportation + CumlFinancial + Total.salary, data=energy)
+model_parameters(lm3) %>% print_md()
+```
+
+This last model shows all significant variables that impact the dependent variable with the right sign. We will now test their predictive power. We run the 3 models on the train set and test them on the test set with the goal of obtaining the lowest RMSE. RMSE (Root Mean Square Error) is the standard deviation of the residuals (prediction errors). Residuals are a measure of how far from the regression line data points are; RMSE is a measure of how spread out these residuals are. In other words, it tells you how concentrated the data is around the line of best fit. The lowest the RMSE the better the model is. Since we are doing regression and not categorization, we can not measure accuracy. 
+
+```{r running the 3 linear regression models, include=FALSE, warning=FALSE}
+set.seed(1, sample.kind="Rounding")
+train_lm1<-lm(GenTotalRenewable~GenTotal + GenHydro + GenSolar + EPriceResidential +EPriceCommercial + EPriceIndustrial + EPriceTransportation + EPriceTotal + EsalesResidential + EsalesCommercial + EsalesIndustrial +EsalesTransportation + EsalesTotal + CumlRegulatory + CumlFinancial + Total.salary + presidential.results, data=train_set)
+yhat_trainlm1<-predict(train_lm1, newdata=test_set)
+rmse_lm1<-sqrt(mean(yhat_trainlm1-test_set$GenTotalRenewable)^2)
+rmse_lm1 
+
+train_lm2<-lm(GenTotalRenewable~GenTotal + GenHydro + GenSolar + EPriceTransportation + EPriceTotal + EsalesTransportation + EsalesTotal + CumlFinancial + Total.salary, data=train_set)
+yhat_trainlm2<-predict(train_lm2, newdata=test_set)
+rmse_lm2<-sqrt(mean(yhat_trainlm2-test_set$GenTotalRenewable)^2)
+rmse_lm2 
+
+train_lm3<-lm(GenTotalRenewable~ GenHydro + GenSolar + EPriceTransportation + EsalesTransportation + CumlFinancial+ Total.salary, data=train_set)
+yhat_trainlm3<-predict(train_lm3, newdata=test_set)
+rmse_lm3<-sqrt(mean(yhat_trainlm3-test_set$GenTotalRenewable)^2)
+rmse_lm3 
+```
+
+```{r table of linear regression RMSE results, echo= FALSE, warning=FALSE}
+lm_Results <- tibble(Model="Linear Regression All Variables", RMSE= rmse_lm1)
+lm_Results<-bind_rows(lm_Results, data_frame(Model="Linear Regression 9 Variables", RMSE=rmse_lm2))
+lm_Results<-bind_rows(lm_Results, data_frame(Model="Linear Regression 6 Variables", RMSE=rmse_lm3))
+kable(lm_Results) %>% kable_styling(bootstrap_options="hover", font_size=10, full_width=F, latex_options = "HOLD_position")
+```
+
+The three models have similar RMSE's, the reason behind the first being the lowest is the number of predictors. Adding extra predictors can improve RMSE substantially, but it wont improve the model when the added predictors are highly correlated to each other. Therefore we will again keep the third model (the one with the 6 significant variables) as the best model. 
+
+
+## 3.2 Regression Trees
+We try visualizing the regression trees in its entirety in order to have an idea of the importance of variables. Again, a first tree including all variables, showed Gen Hydro as the most important variable, up to the point of being the only variable in the tree. 
+
+```{r building the first tree with all variables, include=FALSE, warning=FALSE}
+set.seed(1, sample.kind="Rounding")
+tree1<-rpart(GenTotalRenewable~GenTotal + GenHydro + GenSolar + EPriceResidential +EPriceCommercial + EPriceIndustrial + EPriceTransportation + EPriceTotal + EsalesResidential + EsalesCommercial + EsalesIndustrial +EsalesTransportation + EsalesTotal + CumlRegulatory + CumlFinancial + Total.salary, data=energy)
+```
+
+```{r ploting the first tree and seeing the most important variables, echo= FALSE, warning=FALSE}
+rpart.plot(tree1, type=2, digits=2, fallen.leaves=TRUE)
+
+table_tree1<-varImp(tree1)
+kable(table_tree1) %>% kable_styling(bootstrap_options="hover", font_size=10, full_width=F, latex_options = "HOLD_position")
+```
+
+We try with the second model of 9 variables, but the result is identical. GenHydro is still the only variable shown  in the regression tree.
+
+```{r building the second tree with 9 variables, include=FALSE, warning=FALSE}
+tree2<-rpart(GenTotalRenewable~GenTotal + GenHydro + GenSolar + EPriceTransportation + EPriceTotal + EsalesTransportation + EsalesTotal + CumlFinancial + Total.salary, data=energy)
+```
+
+```{r ploting the second tree and seeing the most important variables, echo= FALSE, warning=FALSE}
+rpart.plot(tree1, type=2, digits=2, fallen.leaves=TRUE)
+
+table_tree2<-varImp(tree2)
+kable(table_tree2) %>% kable_styling(bootstrap_options="hover", font_size=10, full_width=F, latex_options = "HOLD_position")
+```
+
+The last model with only the 6 significant variables according to the linear regression model gives the same exact result.
+
+```{r building the third tree with 6 variables, include=FALSE, warning=FALSE}
+tree3<-rpart(GenTotalRenewable~ GenHydro+ GenSolar + EPriceTransportation + EsalesTransportation + CumlFinancial+ Total.salary, data=energy)
+```
+
+```{r ploting the third tree and seeing the most important variables, echo= FALSE, warning=FALSE}
+rpart.plot(tree3, type=2, digits=2, fallen.leaves=TRUE)
+
+table_tree3<-varImp(tree3)
+kable(table_tree3) %>% kable_styling(bootstrap_options="hover", font_size=10, full_width=F, latex_options = "HOLD_position")
+```
+
+To try to see beyond this variable, we remove it from the model and we include GenTotal. As GenHydro is a source of Renewable Energy, there is a high correlation between these two variables that is overrunning this regression tree. Removing it from the model makes it more balanced and it may allow for other variables to show. 
+
+```{r building the fourth tree without GenHydro, echo= FALSE, warning=FALSE}
+tree4<-rpart(GenTotalRenewable~ GenTotal+ GenSolar + EPriceTransportation + EsalesTransportation + CumlFinancial+ Total.salary, data=energy)
+```
+
+```{r ploting the fourth tree and seeing the most improtant variables, echo= FALSE, warning=FALSE}
+rpart.plot(tree4, type=3, digits=2, fallen.leaves=TRUE)
+
+table_tree4<-varImp(tree4)
+kable(table_tree4) %>% kable_styling(bootstrap_options="hover", font_size=10, full_width=F, latex_options = "HOLD_position")
+```
+
+We train the 4 models to see their predictive power.
+
+```{r training the 4 regression trees, include=FALSE, warning=FALSE}
+set.seed(1, sample.kind="Rounding")
+train_tree1<-train(GenTotalRenewable~GenTotal + GenHydro + GenSolar + EPriceResidential +EPriceCommercial + EPriceIndustrial + EPriceTransportation + EPriceTotal + EsalesResidential + EsalesCommercial + EsalesIndustrial +EsalesTransportation + EsalesTotal + CumlRegulatory + CumlFinancial + Total.salary, method="rpart", data=train_set, na.action=na.roughfix)
+yhat_train_tree1<-predict(train_tree1, newdata=test_set)
+rmse_tree1<-sqrt(mean((yhat_train_tree1-test_set$GenTotalRenewable)^2))
+rmse_tree1 
+
+train_tree2<-train(GenTotalRenewable~GenTotal + GenHydro + GenSolar + EPriceTransportation + EPriceTotal + EsalesTransportation + EsalesTotal + CumlFinancial + Total.salary, method="rpart", data=train_set, na.action=na.roughfix)
+yhat_train_tree2<-predict(train_tree2, newdata=test_set)
+rmse_tree2<-sqrt(mean((yhat_train_tree2-test_set$GenTotalRenewable)^2))
+rmse_tree2 
+
+train_tree3<-train(GenTotalRenewable~ GenHydro+ GenSolar + EPriceTransportation + EsalesTransportation + CumlFinancial+ Total.salary, method="rpart", data=train_set, na.action=na.roughfix)
+yhat_train_tree3<-predict(train_tree3, newdata=test_set)
+rmse_tree3<-sqrt(mean((yhat_train_tree3-test_set$GenTotalRenewable)^2))
+rmse_tree3 
+
+train_tree4<-train(GenTotalRenewable~ GenTotal+ GenSolar + EPriceTransportation + EsalesTransportation + CumlFinancial+ Total.salary, method="rpart", data=train_set, na.action=na.roughfix)
+yhat_train_tree4<-predict(train_tree4, newdata=test_set)
+rmse_tree4<-sqrt(mean((yhat_train_tree4-test_set$GenTotalRenewable)^2))
+rmse_tree4 
+```
+
+```{r table of regression tree RMSE results, echo= FALSE, warning=FALSE}
+tree_Results <- tibble(Model="Regression Tree All Variables", RMSE= rmse_tree1)
+tree_Results<-bind_rows(tree_Results, data_frame(Model="Regression Tree 9 Variables", RMSE=rmse_tree2))
+tree_Results<-bind_rows(tree_Results, data_frame(Model="Regression Tree 6 Variables", RMSE=rmse_tree3))
+tree_Results<-bind_rows(tree_Results, data_frame(Model="Regression Tree No GenHydro", RMSE=rmse_tree4))
+kable(tree_Results) %>% kable_styling(bootstrap_options="hover", font_size=10, full_width=F, latex_options = "hold_position")
+```
+
+RMSE's in the first 3 models are identical. RMSE increases heavily in the fourth model because we are removing a variable that the model considers most important. Here, We can experience the trade off between visibility and representativity. GenHydro is such an important variable that clouds others in a regression tree and removing it from the model makes it loose predictive power. 
+
+## 3.3 Random Forest
+The last machine learning method we will use is random forest, as with the previous two models, we will try with the 4  models, all variables, 9 variables, 6 significant variables and GenHydro excluded.
+
+```{r training the 3 random forest models, include=FALSE, warning=FALSE}
+set.seed(1, sample.kind="Rounding")
+
+train_rf1<-train(GenTotalRenewable~GenTotal + GenHydro + GenSolar + EPriceResidential +EPriceCommercial + EPriceIndustrial + EPriceTransportation + EPriceTotal + EsalesResidential + EsalesCommercial + EsalesIndustrial +EsalesTransportation + EsalesTotal + CumlRegulatory + CumlFinancial + Total.salary, method="rf", data=train_set, na.action=na.roughfix)
+yhat_train_rf1<-predict(train_rf1, newdata=test_set)
+rmse_rf1<-sqrt(mean((yhat_train_rf1-test_set$GenTotalRenewable)^2))
+rmse_rf1 
+
+train_rf2<-train(GenTotalRenewable~GenTotal + GenHydro + GenSolar + EPriceTransportation + EPriceTotal + EsalesTransportation + EsalesTotal + CumlFinancial + Total.salary, method="rf", data=train_set, na.action=na.roughfix)
+yhat_train_rf2<-predict(train_rf2, newdata=test_set)
+rmse_rf2<-sqrt(mean(yhat_train_rf2-test_set$GenTotalRenewable)^2)
+rmse_rf2 
+
+train_rf3<-train(GenTotalRenewable~ GenHydro+ GenSolar + EPriceTransportation + EsalesTransportation + CumlFinancial+ Total.salary, method="rf", data=train_set, na.action=na.roughfix)
+yhat_train_rf3<-predict(train_rf3, newdata=test_set)
+rmse_rf3<-sqrt(mean(yhat_train_rf3-test_set$GenTotalRenewable)^2)
+rmse_rf3 
+
+train_rf4<-train(GenTotalRenewable~ GenTotal+ GenSolar + EPriceTransportation + EsalesTransportation + CumlFinancial+ Total.salary, method="rf", data=train_set, na.action=na.roughfix)
+yhat_train_rf4<-predict(train_rf4, newdata=test_set)
+rmse_rf4<-sqrt(mean(yhat_train_rf4-test_set$GenTotalRenewable)^2)
+rmse_rf4 
+```
+
+```{r table of random forest RMSE results, echo= FALSE, warning=FALSE}
+rf_Results <- tibble(Model="Random Forest All Variables", RMSE= rmse_rf1)
+rf_Results<-bind_rows(rf_Results, data_frame(Model="Random Forest 9 Variables", RMSE=rmse_rf2))
+rf_Results<-bind_rows(rf_Results, data_frame(Model="Random Forest 6 Variables", RMSE=rmse_rf3))
+rf_Results<-bind_rows(rf_Results, data_frame(Model="Random Forest No GenHydro", RMSE=rmse_rf4))
+kable(rf_Results) %>% kable_styling(bootstrap_options="hover", font_size=10, full_width=F, latex_options = "HOLD_position")
+```
+
+In this last method, RMSE is improved by reducing the model and using only the most significant variables. The 4th method introduced in regression trees without GenHydro does not improve the model at all. 
+
+# Results
+The following table shows the RMSE's obtained in the training of the different models. 
+
+```{r, echo=FALSE, warning=FALSE}
+Results <- tibble(Model="Linear Regression All Variables", RMSE= rmse_lm1)
+Results<-bind_rows(Results, data_frame(Model="Linear Regression 9 Variables", RMSE=rmse_lm2))
+Results<-bind_rows(Results, data_frame(Model="Linear Regression 6 Variables", RMSE=rmse_lm3))
+Results<-bind_rows(Results, data_frame(Model="Regression Tree All Variabless", RMSE=rmse_tree1))
+Results<-bind_rows(Results, data_frame(Model="Regression Tree 9 Variables", RMSE=rmse_tree2))
+Results<-bind_rows(Results, data_frame(Model="Regression Tree 6 Variables", RMSE=rmse_tree3))
+Results<-bind_rows(Results, data_frame(Model="Regression Tree No GenHydro",  RMSE=rmse_tree4))
+Results<-bind_rows(Results, data_frame(Model="Random Forest All Variables", RMSE=rmse_rf1))
+Results<-bind_rows(Results, data_frame(Model="Random Forest 9 Variables", RMSE=rmse_rf2))
+Results<-bind_rows(Results, data_frame(Model="Random Forest 6 Variables", RMSE=rmse_rf3))
+Results<-bind_rows(Results, data_frame(Model="Random Forest No GenHydro", RMSE=rmse_rf4))
+kable(Results) %>% kable_styling(bootstrap_options="hover", font_size=10, full_width=F, latex_options = "HOLD_position")
+```
+
+As it was mentioned before, each technique was affected by the uniqueness of its model. Linear regression RMSE improves with more variables, but does not improve its predictive power. Regression trees are clouded by a very strong variable such as GenHydro that clouds all other variables from showing on the trees, yet removing the variable increases the RMSE. In the case of random forests,averaging several regression trees helps to not be clouded by GenHydro, but also removing it from the model increases RMSE. 
+
+Finally, we can see that 2 variables that remain strong and constant all along the excercise are CumlFinancial and GenTotal, or Financial Incentives and total energy generation. This are good matches that can be generalized for real life applications as countries that are big energy producers have a better chance to be renewable energy producers and even more important, countries that support energy generation financially set strong basis for entrepreneurs to launch energy generation projects. 
+
+\newpage
+
+# Conclusion
+
+On this project: There were many trade offs while carrying out this project. The first was the choice of data set, where personal interest clashed quality of the data. As a first choice I had chosen crime, but even though there were enough observations, the variables such as neighborhood, month, day, hour, minute, latitude, longitude and type of crime there was not much that could be predicted. This was a great data set for exploration and visualization but without much predictive power. As a second choice, a data set on real estate prices in New York City was the opposite, big potential for predictions, but not much interest on my side for this topic. Finally settling for a data set on a topic in which I am deeply interested, yet did not contain complete technical information on the variables to make quantitative assertions. 
+
+On this data set: The choice of dependent variable was another trade off, I wanted to see the predictors of renewable energy generation, yet the variable being continuous, only a few machine learning techniques could be applied (linear regression, regression trees and random forest). Had I chosen a different variable (categorical), I could have ran logistic regression, LDA, LQA or  KNN techniques. 
+
+On the results obtained, we can see how each machine learning technique behaves. Linear regression has a lower RMSE the more variables we include in the model, which does not make it necessarily more predictive. Regression trees can be clouded by one variable (GenHydro) and avoid visibility, yet removing the variable hurts the predictive power of the model. Finally, random forests profit from the strength of combining many trees to avoid being clouded by one variable, yet removing such variable also hurts the model.
+
+Not having technical information on the variables allowed to make only numerical assumptions on relationships between the variables. It was still very insightful on the relationship of energy predictors according to theory and the results shed by this data set. Theory says that government intervention will forcefully change the behavior of the private sector to produce energy through government incentives, this will in turn provoke a decrease in prices due to the increased supply of energy, and finally cause a surge in consumption since energy becomes cheaper. This data set shows that some of these relationships are not as straightforward, 
+
+Government Incentives and Energy Generation
+Government incentives slightly increased  in the year 2000s, seeing a surge in 2005 and an even bigger push in 2009. An increase in renewable energy generation did happen, but the reason is not in this data set ((personally I think it was wind energy), because solar remained low (it started growing around 2014, time after the scope of this data set, due to a drop in solar technology prices), and  hydroelectric energy had ups and downs but ended at lower levels in 2013 than in 2000.
+
+Energy Generation and Prices
+More energy supply did not reduced prices. It didn't in the past and it probably wont do in the near future. It didn't in the past because the initial investment of launching new energy projects is very high and projects need to keep charging high prices to recover the investment. It will not in the future because lowering energy prices too much but cause a double problem, on one side increased consumption on times where efforts are made to reduce consumption, and lower return on investment for new projects wishing to launch. 
+
+Prices and consumption
+Regardless of increased prices, energy consumption continues to rise, and it will continue to do so and we become more energy dependent for most of human daily activities. The introduction of electric mobility is one of the big drivers of this increase and it is not necessarily negative as long as the energy generated to power this vehicles is renewable energy. The decrease in industrial energy can be explained because we are using sales as a proxy for consumption and in this case, there was being an effort for many industries (data centers, tech, car manufacturers) to create their own energy, therefore stop "buying" it from utilities. 
+
+Lastly, the final question of income causing more energy consumption, we can positively see that income has risen a lot more than energy consumption, which shows that even though people are earning more, they are being careful with their consumption, which is a reflection of energy consciousness.
+
+# References
+Irizarry, Rafael A., Introduction to Data Science, Data Analysis and Prediction Algorithms with R, 2021-07-03, https://rafalab.github.io/dsbook/
+
+https://energypost.eu/green-new-deal-can-learn-from-obamas-90bn-clean-energy-plan-of-2009/
