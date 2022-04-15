@@ -3,3 +3,4 @@ Choose Your Own project aims at finding a data set, analyze it and run machine l
 There are 3 output documents: R, Rmd and PDF, as well as the original csv file.
 Platform used: Rstudio. 
 Date: March 2022.
+Update April 2022: Graded 90/100. Data Science Certificate obtained!
